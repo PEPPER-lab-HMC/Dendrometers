@@ -5,39 +5,43 @@ library(broom)
 
 gs4_auth()
 
+#as.POSIXct
 #group_by, map,
 
 #Assign Variables
 calibrationLink = "https://docs.google.com/spreadsheets/d/1NYN9nsvnWhgacy0XAkqLbMublKPF0JVekISW6Z8raEs/edit?gid=0#gid=0"
 dataLink = "https://docs.google.com/spreadsheets/d/1a9A-cXPrbydEx-SkLjtom8_Vz4tvXKqDvl7rAOupK4o/edit?gid=0#gid=0"
-numDendros = 4
-startRow = 1
-voltCol = TRUE  #Do you have a voltage column? (as last column)
+startRow = 581
+numDendros = 8
+voltCol = TRUE
+
 
 
 #Create standard column names for data
-# dendroList = c()
-# for (num in 1:numDendros){
-#   name = paste0("sensor_", num)
-#   dendroList = c(dendroList, name)
-# }
+dendroList = c()
+for (num in 1:numDendros){
+  name = paste0("sensor_", num)
+  dendroList = c(dendroList, name)
+}
 
-# colList = c("datetime_dd_mm_yy", dendroList)
-# if(voltCol) {
-#   colList = c(colList, "Voltage")
-# }
+colList = c("datetime_dd_mm_yy", dendroList)
+if(voltCol) {
+  colList = c(colList, "Voltage")
+}
 
 #read data
 calibration <- read_sheet(ss = calibrationLink)
-dendrometer_log <- read_sheet(col_names = colList, 
-                              skip = startRow-1, ss = dataLink)
+dendrometer_log <- read_sheet(skip = startRow-1, ss = dataLink,col_names = colList)
+
+#filter data
+calibration <- filter(calibration, width != 7)
+dendrometer_log <- filter(dendrometer_log, sensor_8 >= 24500)
 
 newCalibration <- calibration |> 
   group_by(sensor) |> 
   nest() |> 
-  mutate(model = map(data, ~ summary(lm(output ~ width, data = .x))), 
-         tidy_results = map(model, tidy)
-         ) |>
+  mutate(model = map(data, ~ summary(lm(no_resistor_output ~ width, data = .x))), 
+         tidy_results = map(model, tidy)) |>
   rowwise() |> 
   mutate( rsquared = model$r.squared) |> 
   unnest(tidy_results) |> 
@@ -45,34 +49,12 @@ newCalibration <- calibration |>
   pivot_wider(names_from = term, values_from = estimate)
 
 
-# model_rs# model_results <- mtcars %>% 
-#   group_by(am) %>% 
-#   nest() %>% 
-#   mutate(model = map(data, ~ lm(mpg ~ hp, data = .x)), tidy_results = map(model, tidy) ) 
-# final_output <- model_results %>% unnest(tidy_results) print(final_output)
-
-
-
 #plot calibration curve (change sensor number for diff. sensor's lines)
 # ggplot(calibration, mapping = aes(x = width, y = sensor_1)) +  
 #   geom_point() + geom_smooth(formula = y ~ x, method = "lm")
 # 
 # #Get best fit line equations
-# line_1 <- lm(sensor_1 ~ width, calibration)
-# line_2 <- lm(sensor_2 ~ width, calibration)
-# line_3 <- lm(sensor_3 ~ width, calibration)
-# line_4 <- lm(sensor_4 ~ width, calibration)
-# 
-# glance(line_1)
-# 
-# slope_1 = coef(line_1)[2]
-# inter_1 = coef(line_1)[1]
-# slope_2 = coef(line_2)[2]
-# inter_2 = coef(line_2)[1]
-# slope_3 = coef(line_3)[2]
-# inter_3 = coef(line_3)[1]
-# slope_4 = coef(line_4)[2]
-# inter_4 = coef(line_4)[1]
+
 
 
 #put dates into date format
@@ -84,20 +66,33 @@ ggplot(dendrometer_log, mapping = aes(x = datetime_dd_mm_yy, y = sensor_1)) +  g
 ggplot(dendrometer_log, mapping = aes(x = datetime_dd_mm_yy, y = sensor_2)) +  geom_point()
 ggplot(dendrometer_log, mapping = aes(x = datetime_dd_mm_yy, y = sensor_3)) +  geom_point()
 ggplot(dendrometer_log, mapping = aes(x = datetime_dd_mm_yy, y = sensor_4)) +  geom_point()
+ggplot(dendrometer_log, mapping = aes(x = datetime_dd_mm_yy, y = sensor_5)) +  geom_point()
+ggplot(dendrometer_log, mapping = aes(x = datetime_dd_mm_yy, y = sensor_6)) +  geom_point()
+ggplot(dendrometer_log, mapping = aes(x = datetime_dd_mm_yy, y = sensor_7)) +  geom_point()
+ggplot(dendrometer_log, mapping = aes(x = datetime_dd_mm_yy, y = sensor_8)) +  geom_point()
 
 
 #Convert sensor readings to mm
 dendrometer_mm <- dendrometer_log|> 
-  mutate(sensor_1 = (sensor_1-inter_1)/slope_1,
-         sensor_2 = (sensor_2-inter_2)/slope_2, 
-         sensor_3 = (sensor_3-inter_3)/slope_3,
-         sensor_4 = (sensor_4-inter_4)/slope_4)
+  mutate(sensor_1 = (sensor_1-newCalibration$`(Intercept)`[1])/newCalibration$width[1],
+         sensor_2 = (sensor_2-newCalibration$`(Intercept)`[2])/newCalibration$width[2], 
+         sensor_3 = (sensor_3-newCalibration$`(Intercept)`[3])/newCalibration$width[3],
+         sensor_4 = (sensor_4-newCalibration$`(Intercept)`[4])/newCalibration$width[4],
+         sensor_5 = (sensor_5-newCalibration$`(Intercept)`[5])/newCalibration$width[5],
+         sensor_6 = (sensor_6-newCalibration$`(Intercept)`[6])/newCalibration$width[6], 
+         sensor_7 = (sensor_7-newCalibration$`(Intercept)`[7])/newCalibration$width[7],
+         sensor_8 = (sensor_8-newCalibration$`(Intercept)`[8])/newCalibration$width[8])
 
 #Plot plant diameter in mm (non-temperature corrected)
 ggplot(dendrometer_mm, mapping = aes(x = datetime_dd_mm_yy, y = sensor_1)) +  geom_point()
 ggplot(dendrometer_mm, mapping = aes(x = datetime_dd_mm_yy, y = sensor_2)) +  geom_point()
 ggplot(dendrometer_mm, mapping = aes(x = datetime_dd_mm_yy, y = sensor_3)) +  geom_point()
 ggplot(dendrometer_mm, mapping = aes(x = datetime_dd_mm_yy, y = sensor_4)) +  geom_point()
+ggplot(dendrometer_mm, mapping = aes(x = datetime_dd_mm_yy, y = sensor_5)) +  geom_point()
+ggplot(dendrometer_mm, mapping = aes(x = datetime_dd_mm_yy, y = sensor_6)) +  geom_point()
+ggplot(dendrometer_mm, mapping = aes(x = datetime_dd_mm_yy, y = sensor_7)) +  geom_point()
+ggplot(dendrometer_mm, mapping = aes(x = datetime_dd_mm_yy, y = sensor_8)) +  geom_point()
+
 
 #Temperature Correction 
 dendrometer_mm_corr <- dendrometer_mm |> 
